@@ -514,7 +514,7 @@ class GG():
             render_channels=self.render_channels
         return channels,render_channels
 
-    def read_sonar(self,options=["redirection","volume","mute","eq","monitoring","speaker","chatMix"]) -> dict:
+    def read_sonar(self,options=["redirection","volume","mute","eq","monitoring","speaker","chatMix","audioInitialization"]) -> dict:
         options = [x.lower() if isinstance(x, str) else x for x in options]
         profile={}
         profile["streamerMode"]=self.get_streamer_mode()
