@@ -1,3 +1,7 @@
+"""
+This file is for testing and debugging issues with the script.
+"""
+
 import sys
 import requests
 import json
@@ -12,10 +16,9 @@ import exceptions as GGex
 
 gg = GG()
 
-gg.win_get_speaker_channel()
-temp=gg.read_sonar_device_id("media")
-gg.put_streamer_mode(True)
-# gg.win_set_vol("media",.5)
+gg.get_chat_mix()
+temp=gg.read_sonar()
+temp2=gg.apply_sonar(temp)
 gg.put_active_EQ(gg.read_EQ_id("bf6 surround","game"))
 gg.win_set_vol("game",.7)
 gg.put_linkAll_link("game")
@@ -25,7 +28,7 @@ addresses:list[str|None]=[gg.gg.url,gg.reg.url,gg.sonar.url,gg.engine.url,gg.mom
 datas=[]
 gg.read_redirections()
 temp=gg.read_sonar()
-temp2=gg.apply_sonar(temp)
+
 for address in addresses:
     if address:
         try:

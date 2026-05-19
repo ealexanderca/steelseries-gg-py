@@ -104,6 +104,7 @@ DEFAULT_CONFIG = {
     "app_detection_enabled":True,
     "profiles": {
         "default": {
+            "color": ["#A94DC1","#bb78cc"],
             "description": "Default profile",
             "sonar":{
                 "volume": {"all":1.0},

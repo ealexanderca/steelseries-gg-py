@@ -1,4 +1,4 @@
-from requests import Session, RequestException
+from requests import Session, RequestException, put
 import json
 from os import path, environ
 from uuid import uuid4
@@ -32,16 +32,18 @@ class GG():
     def __init__(self, coreProps_path:str|None=None):
         self.valid_apps={"engine":"gg","moments":"gg","sonar":"gg","threeDAT":"gg","prismSyncV2":"engine"}
         self.EQ_filters:list[str]=["selected","default"]
-        self.render_channels=["game", "chatRender", "media", "aux"]
+        self.EQ_render_channels=["game", "chatRender", "media", "aux"]
         self.render_display_channels=["Game", "Chat", "Media", "Aux"]
-        self.EQ_channels:list[str]=self.render_channels + ["chatCapture"]
+        self.EQ_channels:list[str]=self.EQ_render_channels + ["chatCapture"]
         self.EQ_display_channels:list[str]=self.render_display_channels + ["Mic"]
         self.channels:list[str] = ["master"] + self.EQ_channels
+        self.render_channels:list[str] = ["master"] + self.EQ_render_channels
         self.display_channels:list[str] = ["Master"] + self.EQ_display_channels
         self.mode_options:list[str] = ["stream","classic"]
         self.streamer_sliders:list[str] = ["streaming", "monitoring"]
-        self.classic_devices=[ "game", "chat", "media", "aux", "mic"]
-        self.stream_devices=self.streamer_sliders +["mic"]
+        self.classic_render_devices=["game", "chat", "media", "aux"]
+        self.classic_devices=self.classic_render_devices + ["mic"]
+        self.stream_devices=self.streamer_sliders + ["mic"]
         self.coreProps_path:str = path.join(environ["ProgramData"],"SteelSeries","SteelSeries Engine 3","coreProps.json",)
         self.last_sonar_ip=None
         # Type annotations for dynamically added EndPoint attributes
@@ -256,7 +258,6 @@ class GG():
     def put_volume(self, channel:str, volume:str|float, streamer_slider:str="streaming") -> dict:
         streamer_mode=self.get_streamer_mode()
         
-        
         if channel not in self.channels:
             raise ex.InvalidChannel(channel)
 
@@ -282,7 +283,7 @@ class GG():
 
         return self._wrapped_requests("put",self.sonar,f"{url_path}/{channel}/Volume/{json.dumps(volume)}")
 
-    def put_mute(self, channel, muted:str|bool|int, streamer_slider:str="streaming") -> dict:
+    def put_mute(self, channel:str, muted:str|bool|int, streamer_slider:str="streaming") -> dict:
         streamer_mode=self.get_streamer_mode()
         if channel not in self.channels:
             raise ex.InvalidChannel(channel)
@@ -305,11 +306,31 @@ class GG():
 
         return self._wrapped_requests("put",self.sonar,f"{url_path}/{channel}/{mute_keyword}/{json.dumps(muted)}")
 
+    def read_audio_initialization(self,channel:str) -> bool:
+        if channel not in self.channels:
+            raise ex.InvalidChannel(channel)
+        return channel in self.read_sonar_devices()
+
+    def put_audio_initialization(self, channel:str, enabled:bool|str) -> dict:
+
+        if channel not in self.channels:
+            raise ex.InvalidChannel(channel)
+        if type(enabled) is str and enabled.lower() == "toggle":
+            enabled = not self.read_audio_initialization(channel)
+
+        enabled = to_bool(enabled)
+
+        url_path = f"/audioInitialization/{channel}/isEnabled/{json.dumps(enabled)}"
+
+        return self._wrapped_requests("put",self.sonar,url_path)
+
     def put_chat_mix(self, mix_volume:str|int|float) -> dict:
-        
+        current_mix=self.get_chat_mix()
+        if not current_mix["state"]=="enabled":
+            raise ex.ChatMixNotAvailable(current_mix["state"])
         if isinstance(mix_volume,str):
             if "r" in mix_volume:
-                cur_vol=self.get_chat_mix()["balance"]
+                cur_vol=current_mix["balance"]
                 mix_volume=mix_volume.replace("r","")
                 mix_volume=cur_vol + float(mix_volume)
             else:
@@ -449,14 +470,12 @@ class GG():
         return sources
 
     def read_sonar_devices(self,) -> dict:
-        if self.last_sonar_ip != self.sonar(""):
-            self.last_sonar_ip = self.sonar("")
-            self.sonar_device_ids={}
-            devices=self.get_audio_devices()
-            self.channel_device_data={}
-            for device in devices:
-                if device["role"] in self.channels:
-                    self.channel_device_data[device["role"]]=device
+        self.sonar_device_ids={}
+        devices=self.get_audio_devices()
+        self.channel_device_data={}
+        for device in devices:
+            if device["role"] in self.channels:
+                self.channel_device_data[device["role"]]=device
         return self.channel_device_data
 
     def read_sonar_device_id(self, channel:str) -> str:
@@ -486,16 +505,19 @@ class GG():
     def get_correct_channels(self,option):
         if option == "redirection":
             channels=self.classic_devices
+            render_channels=self.classic_render_devices
         elif option == "eq" or option.endswith("Redirection"):
             channels=self.EQ_channels
+            render_channels=self.EQ_render_channels
         else:
             channels=self.channels
-        return channels
+            render_channels=self.render_channels
+        return channels,render_channels
 
-    def read_sonar(self,options=["redirection","volume","mute","eq","monitoring"]) -> dict:
+    def read_sonar(self,options=["redirection","volume","mute","eq","monitoring","speaker","chatMix"]) -> dict:
         options = [x.lower() if isinstance(x, str) else x for x in options]
         profile={}
-        profile["streamer_mode"]=self.get_streamer_mode()
+        profile["streamerMode"]=self.get_streamer_mode()
         channel_settings={}
         if "eq" in options:
             EQs=self.read_EQs(flag="selected")
@@ -504,8 +526,9 @@ class GG():
             redirection_data=self.read_redirections()
         if "volume" or "mute" in options:
             volume_data=self.read_volume()
-        
-        if profile["streamer_mode"]:
+        if "audioInitialization" in options:
+            channel_settings["monitoringVolume"]=lambda channel: self.read_audio_initialization(channel)
+        if profile["streamerMode"]:
             profile["streamMonitoring"]=self.get_stream_monitoring()
             
             if "volume" in options:
@@ -527,21 +550,23 @@ class GG():
                 channel_settings["mute"]=lambda channel: volume_data[channel]["muted"]
             if "redirection" in options:
                 channel_settings["redirection"]=lambda channel: redirection_data[channel]["deviceId"]
-
+        
         for setting in channel_settings:
-            channels=self.get_correct_channels(setting)
+            channels,render_channels=self.get_correct_channels(setting)
             if setting not in profile:
                 profile[setting] = {}
             for channel in channels:
                 profile[setting][channel]=channel_settings[setting](channel)
-        
-        profile["speaker"]=self.win_get_speaker_channel()
+        if "speaker" in options:
+            profile["speaker"]=self.win_get_speaker_channel()
+        if "chatMix" in options:
+            profile["chatMix"]=self.get_chat_mix()["balance"]
         return profile
 
     def apply_sonar(self, profile:dict, error_handler:Callable|None=None, win_volume=False,pid:int|None=None) -> bool:
         fully_applied=True
-        if "streamer_mode" in profile:
-            streamer_mode=profile["streamer_mode"]
+        if "streamerMode" in profile:
+            streamer_mode=profile["streamerMode"]
             self.put_streamer_mode(streamer_mode)
         else:
             streamer_mode=self.get_streamer_mode()
@@ -557,6 +582,8 @@ class GG():
                     fully_applied=False
                 else:
                     raise
+
+        channel_settings["audioInitialization"]=lambda channel, val: self.put_audio_initialization(channel, val)
 
         if streamer_mode:
             if "streamMonitoring" in profile:
@@ -584,20 +611,22 @@ class GG():
         for option in channel_settings:
             if not profile.get(option):
                 continue
-            channels=self.get_correct_channels(option)
-            if "all" in profile[option]:
-                val=profile[option]["all"]
-                for channel in channels:
-                    try:
-                        channel_settings[option](channel, val)
-                    except ex.GGError:
-                        if error_handler:
-                            error_handler(option,val,channel)
-                            fully_applied=False
-                        else:
-                            raise
+            channels,render_channels=self.get_correct_channels(option)
+            all_options=["all","allRender"]
+            for item in all_options:
+                if item in profile[option]:
+                    val=profile[option][item]
+                    for channel in channels:
+                        try:
+                            channel_settings[option](channel, val)
+                        except ex.GGError:
+                            if error_handler:
+                                error_handler(option,val,channel)
+                                fully_applied=False
+                            else:
+                                raise
             for channel in profile[option]:
-                if channel=="all" or channel not in channels:
+                if channel not in channels:
                     continue
                 channel_settings[option](channel, profile[option][channel])
         if "speaker" in profile:
@@ -606,6 +635,15 @@ class GG():
             except ex.GGError:
                 if error_handler:
                     error_handler("speaker",profile["speaker"],None)
+                    fully_applied=False
+                else:
+                    raise
+        if "chatMix" in profile:
+            try:
+                self.put_chat_mix(profile["chatMix"])
+            except ex.GGError:
+                if error_handler:
+                    error_handler("chatMix",profile["chatMix"],None)
                     fully_applied=False
                 else:
                     raise

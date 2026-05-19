@@ -1,6 +1,17 @@
 class GGError(Exception):
     pass
 
+class ChatMixNotAvailable(GGError):
+    def __init__(self, mode):
+        self.mode = mode
+    def __str__(self):
+        if self.mode =='finiteWheel':
+            return "Chat Mix is not available! set the output device to one that does not have a hardware dial."
+        elif self.mode == 'differentDeviceSelected':
+            return "Chat Mix is not available! set game and chat to the same output device."
+        else:
+            return "Chat Mix is not available! Check sonar for why its not available for software control"
+
 class corePropsNotFound(GGError):
     def __init__(self, path):
         self.path = path
