@@ -54,7 +54,7 @@ class GG():
         self.sonar: GG.EndPoint
         self.threeDAT: GG.EndPoint
         self.prismSyncV2: GG.EndPoint
-        if coreProps_path is not None:
+        if coreProps_path:
             self.coreProps_path = coreProps_path
 
         disable_warnings()
@@ -65,7 +65,7 @@ class GG():
     def _reinit(self,):
         try:
             if not path.exists(self.coreProps_path):
-                raise ex.EnginePathNotFoundError(self.coreProps_path)
+                raise ex.corePropsNotFound(self.coreProps_path)
             with open(self.coreProps_path, "r") as rf:
                 common_app_data = json.load(rf)
                 self.gg = self.EndPoint(self,"gg",f'https://{common_app_data["ggEncryptedAddress"]}',)
@@ -176,7 +176,7 @@ class GG():
     def get_device_configurations(self, number:int):
         return self._wrapped_requests("get", self.engine,f"/device/{number}/configurations")
 
-    def _get_device_routing(self):
+    def get_device_routing(self):
         return self._wrapped_requests("get", self.sonar,"/AudioDeviceRouting")
 
     def get_stream_monitoring(self) -> bool:
@@ -185,14 +185,14 @@ class GG():
     def get_streamer_mode(self) -> bool:
         return self._wrapped_requests("get",self.sonar,"/mode/") == "stream"
 
-    def _get_volume(self) -> dict:
+    def get_volume(self) -> dict:
         streamer_mode=self.get_streamer_mode()
         volume_path = self._volume_path(streamer_mode)
         
         url_path = volume_path
         return self._wrapped_requests("get",self.sonar,url_path)
 
-    def _get_EQs(self, channel:str|None=None, flag:str|None=None) -> dict:
+    def get_EQs(self, channel:str|None=None, flag:str|None=None) -> dict:
         if channel not in self.EQ_channels + [None]:
             raise ex.InvalidChannel(channel)
     
@@ -217,7 +217,7 @@ class GG():
 
         return self._wrapped_requests("get",self.sonar,url_path)
 
-    def _get_redirections(self,) -> dict:
+    def get_redirections(self,) -> dict:
         streamer_mode=self.get_streamer_mode()
         if streamer_mode:
             url_path = "/streamRedirections"
@@ -398,7 +398,7 @@ class GG():
 
     def read_redirections(self,) -> dict:
         streamer_mode=self.get_streamer_mode()
-        redirections=self._get_redirections()
+        redirections=self.get_redirections()
         data={}
         if streamer_mode:
             for redirection in redirections:
@@ -422,7 +422,7 @@ class GG():
         if channel not in self.EQ_channels + [None]:
             raise ex.InvalidChannel(channel)
         
-        EQs=self._get_EQs(channel=channel, flag=flag)
+        EQs=self.get_EQs(channel=channel, flag=flag)
         EQs_out={}
         if flag == "selected":
             for EQ in EQs:
@@ -436,7 +436,7 @@ class GG():
     def read_EQ_id(self, name:str, channel:str|None=None) -> str|None:
         if channel not in self.EQ_channels + [None]:
             raise ex.InvalidChannel(channel)
-        EQs=self._get_EQs(channel=channel)
+        EQs=self.get_EQs(channel=channel)
         id:str|None = None
         for EQ in EQs:
             if EQ["name"]==name:
@@ -448,7 +448,7 @@ class GG():
 
     def read_device_routing(self,active_only=False,get_path=False) -> dict:
         sources={}
-        devices=self._get_device_routing()
+        devices=self.get_device_routing()
 
         for device in devices:
             for session in device["audioSessions"]:
@@ -491,7 +491,7 @@ class GG():
         return self.read_sonar_devices()[channel]["friendlyName"]
 
     def read_volume(self,) -> dict:
-        val = self._get_volume()
+        val = self.get_volume()
         temp = val["devices"]
         temp["master"] = val["masters"]
         if self.get_streamer_mode():
@@ -527,7 +527,7 @@ class GG():
         if "volume" or "mute" in options:
             volume_data=self.read_volume()
         if "audioInitialization" in options:
-            channel_settings["monitoringVolume"]=lambda channel: self.read_audio_initialization(channel)
+            channel_settings["monitoringVolume"]=self.read_audio_initialization
         if profile["streamerMode"]:
             profile["streamMonitoring"]=self.get_stream_monitoring()
             
@@ -552,7 +552,7 @@ class GG():
                 channel_settings["redirection"]=lambda channel: redirection_data[channel]["deviceId"]
         
         for setting in channel_settings:
-            channels,render_channels=self.get_correct_channels(setting)
+            channels,_=self.get_correct_channels(setting)
             if setting not in profile:
                 profile[setting] = {}
             for channel in channels:
@@ -563,7 +563,7 @@ class GG():
             profile["chatMix"]=self.get_chat_mix()["balance"]
         return profile
 
-    def apply_sonar(self, profile:dict, error_handler:Callable|None=None, win_volume=False,pid:int|None=None) -> bool:
+    def write_sonar(self, profile:dict, error_handler:Callable|None=None, win_volume=False,pid:int|None=None) -> bool:
         fully_applied=True
         if "streamerMode" in profile:
             streamer_mode=profile["streamerMode"]
@@ -575,7 +575,7 @@ class GG():
 
         if not streamer_mode and pid and "channel" in profile:
             try:
-                self.apply_channel(profile["channel"], pid)
+                self.write_channel(profile["channel"], pid)
             except ex.GGError:
                 if error_handler:
                     error_handler("channel",profile["channel"],None)
@@ -583,35 +583,35 @@ class GG():
                 else:
                     raise
 
-        channel_settings["audioInitialization"]=lambda channel, val: self.put_audio_initialization(channel, val)
+        channel_settings["audioInitialization"]=self.put_audio_initialization
 
         if streamer_mode:
             if "streamMonitoring" in profile:
                 self.put_stream_monitoring(profile["streamMonitoring"])
 
-            channel_settings["monitoringRedirection"]=lambda channel, val: self.put_redirections_isEnabled(channel, val, "monitoring")
-            channel_settings["streamingRedirection"]=lambda channel, val: self.put_redirections_isEnabled(channel, val, "streaming")
-            channel_settings["monitoringVolume"]=lambda channel, val: self.put_volume(channel, val, "monitoring")
-            channel_settings["streamingVolume"]=lambda channel, val: self.put_volume(channel, val, "streaming")
-            channel_settings["monitoringMute"]=lambda channel, val: self.put_mute(channel, val, "monitoring")
-            channel_settings["streamingMute"]=lambda channel, val: self.put_mute(channel, val, "streaming")
+            channel_settings["monitoringRedirection"]= lambda channel, val: self.put_redirections_isEnabled(channel, val, "monitoring")
+            channel_settings["streamingRedirection"]= self.put_redirections_isEnabled
+            channel_settings["monitoringVolume"]= lambda channel, val: self.put_volume(channel, val, "monitoring")
+            channel_settings["streamingVolume"]= self.put_volume
+            channel_settings["monitoringMute"]= lambda channel, val: self.put_mute(channel, val, "monitoring")
+            channel_settings["streamingMute"]= self.put_mute
 
             for item in self.stream_devices:
                 if isinstance(profile.get(f"{item}Redirection"),dict) and profile[f"{item}Redirection"].get("deviceId"):
                     self.put_redirections_deviceId(profile[f"{item}Redirection"]["deviceId"],streamer_slider=item) 
         else:
-            channel_settings["redirection"]=lambda channel, val: self.put_redirections_deviceId(val,channel)
+            channel_settings["redirection"]= self.put_redirections_deviceId
             if win_volume:
-                channel_settings["volume"]=lambda channel, val: self.win_set_vol(channel, val)
-                channel_settings["mute"]=lambda channel, val: self.win_set_mute(channel, val)
+                channel_settings["volume"]= self.win_set_vol
+                channel_settings["mute"]= self.win_set_mute
             else:
-                channel_settings["volume"]=lambda channel, val: self.put_volume(channel, val)
-                channel_settings["mute"]=lambda channel, val: self.put_mute(channel, val)
+                channel_settings["volume"]= self.put_volume
+                channel_settings["mute"]= self.put_mute
 
         for option in channel_settings:
             if not profile.get(option):
                 continue
-            channels,render_channels=self.get_correct_channels(option)
+            channels,_=self.get_correct_channels(option)
             all_options=["all","allRender"]
             for item in all_options:
                 if item in profile[option]:
@@ -649,7 +649,7 @@ class GG():
                     raise
         return fully_applied
 
-    def apply_channel(self,channel:str, pid: int,check_level:int=2) -> bool:
+    def write_channel(self,channel:str, pid: int,check_level:int=2) -> bool:
         '''
         check_level
         0 = no checks, will send pid and device to the engine

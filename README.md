@@ -3,7 +3,13 @@ An API for interfacing with various apps in SteelSeries GG.
 
 Currently, support is limited to the Sonar and Engine endpoints for audio control, as those are the features available with my SteelSeries headset.
 
-Most endpoints include dedicated function calls for reading and updating data. However, for Sonar control, the  apply_sonar and read_sonar functions are the easiest way to access most of the sonar settings with minimal api calls.
+Most endpoints include dedicated function calls for reading and updating data. However, for Sonar control, the  write_sonar and read_sonar functions are the easiest way to access most of the sonar settings with minimal api calls.
+
+
+>from steelseries-gg-py import GG
+>gg=GG(coreProps_path='C:\\ProgramData\\SteelSeries\\SteelSeries Engine 3\\coreProps.json')
+>data=gg.read_sonar()
+>gg.write_sonar(data)
 
 ## sonar dictionary
 ### streamerMode
@@ -48,7 +54,7 @@ Most endpoints include dedicated function calls for reading and updating data. H
 * bool: true to mirror
 * str: "toggle" to toggle it based on current setting
 ### channel
-* sets the pid entered in the apply_sonar function to output to that channel
+* sets the pid entered in the write_sonar function to output to that channel
 * str: channel name
 ### speaker
 * sets the default windows device to the target channel allowing for control using volume nobs on keyboards or other devices
@@ -159,6 +165,8 @@ Right clicking on it will open the settings menu.
 * float: time between each check of the active application in ms.
 ### app_detection_enabled
 * bool: enables or disables the automatic detection on startup.
+### coreProps_path
+* str|None: Overwrites the default coreprops path if its installed in a different location.
 ### profiles
 * dict: contains all the values for the specified profile
 #### color
@@ -179,12 +187,13 @@ Right clicking on it will open the settings menu.
 * this will move any application detected under this profile to the matching channel for automatic swapping 
 * str: channel name
 #### sonar
-* this is a dict that contains the apply_sonar dict format shown above in [GG dicts](#sonar-dictionary)
+* this is a dict that contains the write_sonar dict format shown above in [GG dicts](#sonar-dictionary)
 ### example
 ```json
 {
-  "poll_interval_ms": 500,
+  "poll_interval_ms": 1000,
   "app_detection_enabled": true,
+  "coreProps_path": null,
   "profiles": {
     "default": {
       "color": [
@@ -193,20 +202,17 @@ Right clicking on it will open the settings menu.
       ],
       "description": "Default profile",
       "sonar": {
-        "volume": {
-          "game": 1
-        },
         "eq": {
           "game": "Flat"
         },
-        "channel": "game",
+        "channel": "media",
         "speaker": "media"
       }
     },
     "R6S": {
       "folders": [
-        "%LOCALAPPDATA%\\Ubisoft\\r6s",
-        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Tom Clancy's Rainbow Six Siege"
+        "AppData\\Local\\Ubisoft\\r6s",
+        "Steam\\steamapps\\common\\Tom Clancy's Rainbow Six Siege"
       ],
       "description": "Rainbow Six Siege",
       "color": [
@@ -214,42 +220,34 @@ Right clicking on it will open the settings menu.
         "#88b6b3"
       ],
       "sonar": {
-        "volume": {
-          "game": 1
-        },
         "eq": {
           "game": "r6s footboost"
         },
-        "channel": "game",
-        "speaker": "media"
+        "channel": "game"
       }
     },
     "BF6": {
       "folders": [
-        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Battlefield 6"
+        "Steam\\steamapps\\common\\Battlefield 6"
       ],
       "names": [
         "bf6"
       ],
-      "description": "BattleField6",
+      "description": "BattleField 6",
       "color": [
         "#8dee6d",
         "#57bef8"
       ],
       "sonar": {
-        "volume": {
-          "game": 0.6
-        },
         "eq": {
           "game": "bf6 surround"
         },
-        "channel": "game",
-        "speaker": "media"
+        "channel": "game"
       }
     },
     "HD2": {
       "folders": [
-        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Helldivers 2\\"
+        "Steam\\steamapps\\common\\Helldivers 2\\"
       ],
       "description": "Helldivers 2",
       "color": [
@@ -257,11 +255,7 @@ Right clicking on it will open the settings menu.
         "#000000"
       ],
       "sonar": {
-        "volume": {
-          "game": 1
-        },
-        "channel": "game",
-        "speaker": "media"
+        "channel": "game"
       }
     }
   }

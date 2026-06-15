@@ -8,8 +8,8 @@ Requirements:
     pip install pywin32 requests pillow
 
 Run:
-    pythonw auto_sonar.py        (background / no console)
-    python  auto_sonar.py        (with console for debugging)
+    pythonw AutoSonar.py        (background / no console)
+    python  AutoSonar.py        (with console for debugging)
 """
 
 import pythoncom
@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Optional
 import win32api
 import win32con
-import tkinter as tk
 from tkinter import messagebox
 import pystray
 from PIL import Image, ImageDraw
@@ -36,17 +35,17 @@ import re
 import win32gui
 import win32process
 import psutil
-from gg import GG
+from steelseries_gg_py import GG
 import exceptions as GGex
 
 # ── constants ─────────────────────────────────────────────────────────────────
 
-APP_DIR   = Path(os.environ.get("APPDATA", "~")).expanduser() / "auto_sonar"
-CONFIG_F  = APP_DIR / "config.json"
-LOG_F     = APP_DIR / "auto_sonar.log"
+APP_DIR   = Path(os.environ.get("APPDATA", "~")).expanduser() / "AutoSonar"
+CONFIG_FILE  = APP_DIR / "config.json"
+LOG_FILE     = APP_DIR / "AutoSonar.log"
 APP_DIR.mkdir(parents=True, exist_ok=True)
 PAUSE_APPS=["lockapp.exe", "logonui.exe"]
-
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 # ── logging ───────────────────────────────────────────────────────────────────
 
 latest_warning = "No warnings"  # global variable
@@ -67,14 +66,14 @@ class WarningCaptureHandler(logging.Handler):
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+    format=LOG_FORMAT,
     handlers=[
-        logging.FileHandler(LOG_F, encoding="utf-8"),
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
         logging.StreamHandler(sys.stdout),
     ],
 )
 
-log = logging.getLogger("auto_sonar")
+log = logging.getLogger("AutoSonar")
 
 def log_uncaught_exception(exc_type, exc_value, exc_traceback):
     # Ignore CTRL+C
@@ -102,6 +101,7 @@ sys.unraisablehook = unraisable_exception_handler
 DEFAULT_CONFIG = {
     "poll_interval_ms": 500,
     "app_detection_enabled":True,
+    "coreProps_path": "",
     "profiles": {
         "default": {
             "color": ["#A94DC1","#bb78cc"],
@@ -118,9 +118,9 @@ DEFAULT_CONFIG = {
 # ── config helpers ────────────────────────────────────────────────────────────
 
 def load_config() -> dict:
-    if CONFIG_F.exists():
+    if CONFIG_FILE.exists():
         try:
-            with open(CONFIG_F, encoding="utf-8") as f:
+            with open(CONFIG_FILE, encoding="utf-8") as f:
                 cfg = json.load(f)
             # Merge in any missing defaults
             for k, v in DEFAULT_CONFIG.items():
@@ -132,7 +132,7 @@ def load_config() -> dict:
     return DEFAULT_CONFIG.copy()
 
 def save_config(cfg: dict):
-    with open(CONFIG_F, "w", encoding="utf-8") as f:
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
 
 def get_next_available_key(keys, prefix):
@@ -206,8 +206,12 @@ def get_foreground_exe() -> tuple[int | None, str | None, str | None]:
 
 def make_icon_image(color: str="#FFFFFF", border_color: str="#000000", border: int=0, scale: int =1, offsets: tuple[float, float]=(0.0, 0.0), size: int = 64) -> Image.Image:
     if isinstance(color,list):
-        color2=color[1]
-        color=color[0]
+        if len(color)>1:
+            color2=color[1]
+            color=color[0]
+        else:
+            color=color[0]
+            color2=color
     else:
         color2=color
     if isinstance(border_color,list):
@@ -249,15 +253,15 @@ def random_hex_color():
 
 # ── main logic ────────────────────────────────────────────────────────────────
 
-class Auto_Sonar:
+class AutoSonar:
     def __init__(self):
-        self.gg:GG = GG()
         self.current_pid: int|None = None
         self.current_exe: Optional[str] = None
         self.running: bool = True
         self.icon: pystray._base.Icon|None = None
         self._icon_img_cache: dict = {}
         self._reload_config()
+        self.gg:GG = GG(self.config["coreProps_path"])
 
     def _get_icon(self, profile_data:dict,profile_name:str|None) -> Image.Image:
         if profile_name not in self._icon_img_cache:
@@ -274,7 +278,7 @@ class Auto_Sonar:
 
             def make_activate(n):
                 def activate(icon, item):
-                    self._apply_profile_by_name(n)
+                    self._write_profile_by_name(n)
                     self.current_profile_name=n
                     if self.icon:
                         self.icon.icon = self._get_icon(self.config["profiles"][n],n)
@@ -352,29 +356,29 @@ class Auto_Sonar:
     def toggle_app_detection(self, *_):
         self.app_detection_enabled = not self.app_detection_enabled
 
-    def _apply_profile_by_name(self, profile_name: str,pid: int|None=None):
+    def _write_profile_by_name(self, profile_name: str,pid: int|None=None):
         profile_data = self.config["profiles"].get(profile_name)
         if not profile_data:
             log.warning(f"Unknown profile: {profile_name}")
             return
         log.info(f"profile '{profile_name}' (app: {self.current_exe})")
-        self._apply_sonar(profile_name,profile_data,pid)
+        self._write_sonar(profile_name,profile_data,pid)
 
     def _move_channel(self,profile_name: str, pid: int):
         profile_data = self.config["profiles"].get(profile_name)
         if not profile_data:
             return
         if pid and profile_data.get("channel"):
-            if not self.gg.apply_channel(profile_data.get("channel"),pid):
+            if not self.gg.write_channel(profile_data.get("channel"),pid):
                 log.warning(f"could not move {pid} to {profile_data["channel"]}")
 
-    def _apply_sonar(self,profile_name: str,profile_data: dict, pid: int|None=None):
+    def _write_sonar(self,profile_name: str,profile_data: dict, pid: int|None=None):
         if "sonar" in profile_data:
             try:
                 if not self.gg.sonar.isRunning:
                     self.gg._reinit()
                 if self.gg.sonar.isRunning:
-                    ok = self.gg.apply_sonar(profile_data["sonar"],lambda x,y,z:log.warning(f"Failed to apply {x} value '{y}' to channel {z}"),pid=pid)
+                    ok = self.gg.write_sonar(profile_data["sonar"],lambda x,y,z:log.warning(f"Failed to apply {x} value '{y}' to channel {z}"),pid=pid)
                     if ok:
                         
                         log.info(f"Sonar profile '{profile_name}' applied")
@@ -408,7 +412,7 @@ class Auto_Sonar:
             profile_name = self._match_application(folder, exe)
             
             if self.current_profile_name != profile_name:
-                self._apply_profile_by_name(profile_name, pid)
+                self._write_profile_by_name(profile_name, pid)
                 self.current_profile_name = profile_name
             else:
                 try:
@@ -469,9 +473,9 @@ class Auto_Sonar:
         except:
             icon=self._get_icon({},"none")
         self.icon = pystray.Icon(
-            name="Auto_Sonar",
+            name="AutoSonar",
             icon = icon,
-            title="Auto Sonar",
+            title="AutoSonar",
             menu=self._build_menu(),
         )
         self.icon.run()
@@ -480,16 +484,15 @@ class Auto_Sonar:
 # ── entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "Auto_Sonar_SingleInstance")
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "AutoSonar_SingleInstance")
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-        root = tk.Tk(); root.withdraw()
         messagebox.showinfo("Already running", "Auto Sonar is already running in the system tray.")
         sys.exit(3)
 
-    app = Auto_Sonar()
+    app = AutoSonar()
 
     warning_handler = WarningCaptureHandler(app)
-    warning_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    warning_handler.setFormatter(logging.Formatter(LOG_FORMAT))
     log.addHandler(warning_handler)
 
     app.run()

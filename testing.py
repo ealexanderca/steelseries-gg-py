@@ -8,17 +8,15 @@ import json
 import urllib3
 sys.path.append(r"C:\Users\ealex\steelseries-gg-py\src")  # <- parent folder
 urllib3.disable_warnings()
-
-from gg import GG
+from steelseries_gg_py import GG
 import exceptions as GGex
 
 # Example
 
 gg = GG()
-
 gg.get_chat_mix()
 temp=gg.read_sonar()
-temp2=gg.apply_sonar(temp)
+temp2=gg.write_sonar(temp)
 gg.put_active_EQ(gg.read_EQ_id("bf6 surround","game"))
 gg.win_set_vol("game",.7)
 gg.put_linkAll_link("game")

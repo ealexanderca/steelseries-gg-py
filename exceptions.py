@@ -39,7 +39,7 @@ class testError(GGError):
 
     def __str__(self):
         return f"{self.msg}"
-    
+
 class connectionError(GGError):
     def __init__(self, msg):
         self.msg = msg
@@ -75,14 +75,6 @@ class DuplicateEQName(GGError):
 
     def __str__(self):
         return f"Duplicate EQ Names '{self.eq}'! specifying the channel with nullify this issue!"
-    
-class EnginePathNotFoundError(GGError):
-    def __init__(self, path):
-        self.path = path
-
-    def __str__(self):
-        return f"Could not find the engine at '{self.path}'! Provide the correct path on initialization."
-    
 
 class InvalidDevice(GGError):
     def __init__(self, id):

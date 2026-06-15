@@ -1,4 +1,4 @@
-from gg import GG
+from steelseries_gg_py import GG
 import exceptions as ex
 
 def test_all():
@@ -20,10 +20,10 @@ def test_all():
     # save state tests
     classic_test_dict={'streamer_mode': False, 'eq': {'game': 'bf6 surround', 'chatRender': 'Less Nasal', 'media': 'bass', 'aux': 'Podcast', 'chatCapture': 'Alias - Boom Arm'}, 'volume': {'game': 0.72, 'chatRender': 0.65, 'media': 0.55, 'aux': 0.46, 'chatCapture': 0.33, 'master': 0.84}, 'mute': {'game': 0.72, 'chatRender': 0.65, 'media': 0.55, 'aux': 0.46, 'chatCapture': 0.33, 'master': 0.84}}
     classic_actual_dict=gg.read_sonar()
-    gg.apply_sonar(classic_test_dict)
+    gg.write_sonar(classic_test_dict)
     if gg.read_sonar() != gg.read_sonar():
         raise ex.testError("issue with the batch updating")
-    gg.apply_sonar(classic_actual_dict)
+    gg.write_sonar(classic_actual_dict)
 
     gg.put_streamer_mode(True)
 
@@ -39,13 +39,13 @@ def test_all():
     # stream mode save state
     streaming_test_dict={'streamer_mode': True, 'stream_monitoring': False, 'eq': {'game': 'r6s footboost', 'chatRender': 'Broadcast', 'media': 'Music: Lo-fi Chill', 'aux': 'Music: Punchy', 'chatCapture': 'Walkie Talkie'}, 'monitorRedirection': {'game': True, 'chatRender': True, 'media': True, 'aux': False, 'chatCapture': False}, 'streamRedirection': {'game': False, 'chatRender': True, 'media': False, 'aux': True, 'chatCapture': True}, 'monitorVolume': {'game': 0.704, 'chatRender': 0.65999997, 'media': 0.6336, 'aux': 0.55439997, 'chatCapture': 0.5, 'master': 0.88}, 'streamVolume': {'game': 0.19600001, 'chatRender': 0.1176, 'media': 0.1274, 'aux': 0.07350001, 'chatCapture': 0.06, 'master': 0.49}, 'monitorMute': {'game': True, 'chatRender': True, 'media': True, 'aux': True, 'chatCapture': True, 'master': True}, 'streamMute': {'game': False, 'chatRender': False, 'media': False, 'aux': False, 'chatCapture': True, 'master': False}}
     streaming_actual_dict=gg.read_sonar()
-    gg.apply_sonar(streaming_test_dict)
+    gg.write_sonar(streaming_test_dict)
     if gg.read_sonar() != gg.read_sonar():
         raise ex.testError("issue with the batch updating")
-    gg.apply_sonar(streaming_actual_dict)
+    gg.write_sonar(streaming_actual_dict)
 
     # routing tests
-    routing=gg._get_device_routing()
+    routing=gg.get_device_routing()
     for channel in routing:
         if channel["role"] not in gg.EQ_channels:
             continue
